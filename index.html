@@ -189,8 +189,8 @@ function showImage() {
     const img2 = IMAGE_LIST[currentImage + 1];
     document.getElementById("content").innerHTML = `
         <div class="msl">
-            <img src="${img}" style="min-height:100vh; border-radius:10px;">
-            <img src="${img2}" style="min-height:100vh; border-radius:10px;">
+            <img src="${img}" style="max-height:100vh; border-radius:10px;">
+            <img src="${img2}" style="max-height:100vh; border-radius:10px;">
         </div>`;
 }
 
@@ -251,6 +251,7 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
 
 
