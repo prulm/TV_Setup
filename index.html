@@ -6,7 +6,6 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
-        /* RESTORING ORIGINAL STYLE */
         body {
             margin: 0;
             font-family: Arial, sans-serif;
@@ -26,7 +25,6 @@
             padding: 20px;
         }
 
-        /* ORIGINAL TABLE STYLING */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -49,12 +47,10 @@
             font-size: 20px;
         }
 
-        /* ORIGINAL STATUS COLORS */
         .status-open { background: #065f46; }
         .status-hold { background: #78350f; }
         .status-overdue { background: #7f1d1d; }
 
-        /* IMAGE & NOTIFICATION LAYOUT */
         .fullCenter {
             height: 80vh;
             display: flex;
@@ -86,7 +82,7 @@
 /* --- CONFIGURATION --- */
 const FILE_NAME = "assignments.xlsx"; 
 const DISPLAY_TIME = 12000;
-const AUTO_RELOAD_MS = 300000; // 5 minutes
+const AUTO_RELOAD_MS = 120000;
 
 const IMAGE_LIST = [
     "notice0.png",
@@ -135,8 +131,7 @@ function showSheet(sheetName) {
     const headers = Object.keys(rows[0]);
     let html = "<table>";
 
-    // MODE 1: THE "FOCALS" GROUPED DISPLAY
-    if (sheetName.toLowerCase() === "focals") {
+    if (sheetName.toLowerCase() === "Shop Visit Status") {
         let personCol = detectColumn(headers, ["assigned", "person", "owner", "name"]) || headers[0];
         let snCol = detectColumn(headers, ["sn", "serial", "task", "job"]) || headers[1];
         let statusCol = detectColumn(headers, ["status", "state"]);
@@ -186,7 +181,7 @@ function showImage() {
     currentImage = (currentImage + 1) % IMAGE_LIST.length;
     document.getElementById("content").innerHTML = `
         <div class="fullCenter">
-            <img src="${img}" style="max-width:95%; min-height:100vh; border-radius:20px;">
+            <img src="${img}" style="min-height:100vh; border-radius:10px;">
         </div>`;
 }
 
@@ -196,7 +191,7 @@ function showNotification() {
         <div class="fullCenter">
             <ul class="notification-list">
                 <li><h1>📢 Update Status Regularly</h1></li>
-                <li><h1>📢 Sign your assigned PL</h1></li>
+                <li><h1>📢 Issue reports timely</h1></li>
             </ul>
         </div>`;
 }
@@ -247,5 +242,6 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
 
