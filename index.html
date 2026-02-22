@@ -189,15 +189,6 @@ function showImage() {
             <img src="${img}" style="max-width:95%; min-height:100vh; border-radius:20px;">
         </div>`;
 }
-    function showImage() {
-    document.getElementById("title").innerText = "Notice";
-    const img = IMAGE_LIST[currentImage];
-    currentImage = (currentImage + 1) % IMAGE_LIST.length;
-    document.getElementById("content").innerHTML = `
-        <div class="fullCenter">
-            <img src="${img}" style="max-width:95%; min-height:100vh; border-radius:20px;">
-        </div>`;
-}
 
 function showNotification() {
     document.getElementById("title").innerText = "Notifications";
@@ -256,4 +247,5 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
