@@ -185,7 +185,8 @@ function showSheet(sheetName) {
     document.getElementById("content").innerHTML = html;
 }
 
-    function showImage() {
+function showImage() {
+    document.getElementById("title").innerText = "Maintenance Service Letters";
     const img = IMAGE_LIST[currentImage];
     const img2 = IMAGE_LIST[currentImage + 1];
     document.getElementById("content").innerHTML = `
@@ -201,7 +202,7 @@ function showNotification() {
         <div class="fullCenter">
             <ul class="notification-list">
                 <li><h1>📢 Update Status Regularly</h1></li>
-                <li><h1>📢 Issue reports timely</h1></li>
+                <li><h1>📢 Crew meeting at 4PM</h1></li>
             </ul>
         </div>`;
 }
@@ -252,6 +253,7 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
 
 
