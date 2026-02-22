@@ -127,6 +127,16 @@ async function loadExcel() {
 }
 
 /* 2. LOGIC SELECTION & RENDERING */
+
+    function showImage() {
+    const img = IMAGE_LIST[currentImage];
+    const img2 = IMAGE_LIST[currentImage + 1];
+    document.getElementById("content").innerHTML = `
+        <div class="msl">
+            <img src="${img}" style="max-height:100vh; border-radius:10px;">
+            <img src="${img2}" style="max-height:100vh; border-radius:10px;">
+        </div>`;
+}
 function showSheet(sheetName) {
     document.getElementById("title").innerText = sheetName;
     const sheet = workbook.Sheets[sheetName];
@@ -184,15 +194,7 @@ function showSheet(sheetName) {
     document.getElementById("content").innerHTML = html;
 }
 
-function showImage() {
-    const img = IMAGE_LIST[currentImage];
-    const img2 = IMAGE_LIST[currentImage + 1];
-    document.getElementById("content").innerHTML = `
-        <div class="msl">
-            <img src="${img}" style="max-height:100vh; border-radius:10px;">
-            <img src="${img2}" style="max-height:100vh; border-radius:10px;">
-        </div>`;
-}
+
 
 function showNotification() {
     document.getElementById("title").innerText = "Notifications";
@@ -251,6 +253,7 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
 
 
