@@ -60,6 +60,14 @@
             text-align: center;
         }
 
+        .msl {
+            height: 100vh;
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
         .notification-list {
             list-style-type: none;
             padding: 0;
@@ -176,12 +184,12 @@ function showSheet(sheetName) {
 }
 
 function showImage() {
-    document.getElementById("title").innerText = "Notice";
     const img = IMAGE_LIST[currentImage];
-    currentImage = (currentImage + 1) % IMAGE_LIST.length;
+    const img2 = IMAGE_LIST[currentImage + 1];
     document.getElementById("content").innerHTML = `
-        <div class="fullCenter">
+        <div class="msl">
             <img src="${img}" style="min-height:100vh; border-radius:10px;">
+            <img src="${img2}" style="min-height:100vh; border-radius:10px;">
         </div>`;
 }
 
@@ -242,6 +250,7 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
 
 
