@@ -2,69 +2,61 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard - Auto Load</title>
+    <title>TV Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
+        /* RESTORING ORIGINAL STYLE */
         body {
             margin: 0;
-            font-family: 'Segoe UI', Arial, sans-serif;
+            font-family: Arial, sans-serif;
             background: #0f172a;
             color: white;
-            overflow: hidden; /* Prevents scrollbars on TV */
+            overflow: hidden;
         }
 
         .header {
             background: #1e293b;
-            padding: 20px;
-            font-size: 35px;
-            font-weight: bold;
+            padding: 15px;
+            font-size: 30px;
             text-align: center;
-            border-bottom: 2px solid #334155;
-            text-transform: uppercase;
-            letter-spacing: 2px;
         }
 
         #content {
             padding: 20px;
-            height: calc(100vh - 100px);
         }
 
-        /* TABLE STYLES */
+        /* ORIGINAL TABLE STYLING */
         table {
             width: 100%;
             border-collapse: collapse;
             background: #1e293b;
-            animation: fadeIn 0.5s ease-in;
         }
 
         th {
             background: #334155;
-            padding: 18px;
-            font-size: 24px;
+            padding: 15px;
+            font-size: 22px;
             border: 1px solid #475569;
         }
 
         td {
-            padding: 18px;
+            padding: 15px;
             text-align: center;
-            border: 1px solid #475569;
-            font-size: 22px;
+            border-top: 1px solid #475569;
+            border-left: 1px solid #475569;
+            border-right: 1px solid #475569;
+            font-size: 20px;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        /* STATUS COLORS */
+        /* ORIGINAL STATUS COLORS */
         .status-open { background: #065f46; }
         .status-hold { background: #78350f; }
         .status-overdue { background: #7f1d1d; }
 
-        /* LAYOUTS */
+        /* IMAGE & NOTIFICATION LAYOUT */
         .fullCenter {
-            height: 70vh;
+            height: 80vh;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -73,37 +65,28 @@
         }
 
         .notification-list {
-            list-style: none;
+            list-style-type: none;
             padding: 0;
         }
 
-        .notification-list h1 {
-            font-size: 45px;
+        .notification-list li h1 {
             margin: 20px 0;
-            background: #1e293b;
-            padding: 20px 40px;
-            border-radius: 15px;
-            border-left: 10px solid #38bdf8;
+            font-size: 40px;
         }
     </style>
 </head>
 <body>
 
 <div id="displaySection">
-    <div class="header" id="title">Initializing Dashboard...</div>
-    <div id="content">
-        <div class="fullCenter">
-            <h1>Loading Data...</h1>
-        </div>
-    </div>
+    <div class="header" id="title">Loading Dashboard...</div>
+    <div id="content"></div>
 </div>
 
 <script>
 /* --- CONFIGURATION --- */
-// IMPORTANT: Put your Excel file in the same folder as this HTML file
 const FILE_NAME = "assignments.xlsx"; 
-const DISPLAY_TIME = 12000;      // 12 seconds per screen
-const AUTO_RELOAD_MS = 300000;   // Refresh data every 5 minutes
+const DISPLAY_TIME = 12000;
+const AUTO_RELOAD_MS = 300000; // 5 minutes
 
 const IMAGE_LIST = [
     "notice0.png",
@@ -115,79 +98,44 @@ let workbook;
 let displays = [];
 let currentDisplay = 0;
 let currentImage = 0;
-let rotationTimer;
+let rotationInterval;
 
-// Start as soon as the window loads
-window.onload = loadDataFromServer;
+window.onload = loadExcel;
 
-/* 1. DATA FETCHING */
-async function loadDataFromServer() {
+/* 1. DATA FETCH (GitHub Pages Compatible) */
+async function loadExcel() {
     try {
-        const response = await fetch(FILE_NAME, { cache: "no-store" });
-        if (!response.ok) throw new Error("Could not find " + FILE_NAME);
+        // Adding a timestamp to the URL prevents the browser from caching an old version of the Excel file
+        const response = await fetch(`${FILE_NAME}?t=${new Date().getTime()}`);
+        if (!response.ok) throw new Error("File not found");
         
-        const arrayBuffer = await response.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        workbook = XLSX.read(data, { type: 'array' });
+        const data = await response.arrayBuffer();
+        workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
 
         buildDisplayList();
         
-        // Start rotation if not already running
-        if (!rotationTimer) {
-            startRotation();
-        }
+        if (!rotationInterval) startRotation();
     } catch (err) {
-        document.getElementById("title").innerText = "Connection Error";
-        document.getElementById("content").innerHTML = `
-            <div class="fullCenter">
-                <h2 style="color:#f87171">Error: ${err.message}</h2>
-                <p>Ensure the Excel file is named <b>${FILE_NAME}</b> and is in the same folder.</p>
-            </div>`;
+        document.getElementById("title").innerText = "Update Error";
+        document.getElementById("content").innerHTML = `<div class="fullCenter"><h1>⚠️ Missing: ${FILE_NAME}</h1></div>`;
     }
 }
 
-/* 2. ROTATION LOGIC */
-function buildDisplayList() {
-    displays = [];
-    // Add all sheets from Excel
-    workbook.SheetNames.forEach(name => {
-        displays.push({ type: "sheet", name: name });
-    });
-    // Add other content
-    displays.push({ type: "image" });
-    displays.push({ type: "notification" });
-}
-
-function startRotation() {
-    runDisplay();
-    rotationTimer = setInterval(() => {
-        currentDisplay = (currentDisplay + 1) % displays.length;
-        runDisplay();
-    }, DISPLAY_TIME);
-}
-
-function runDisplay() {
-    const d = displays[currentDisplay];
-    if (d.type === "sheet") showSheet(d.name);
-    else if (d.type === "image") showImage();
-    else if (d.type === "notification") showNotification();
-}
-
-/* 3. VIEW RENDERING */
+/* 2. LOGIC SELECTION & RENDERING */
 function showSheet(sheetName) {
     document.getElementById("title").innerText = sheetName;
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
     if (rows.length === 0) {
-        document.getElementById("content").innerHTML = "<h2>No Data Found in Sheet</h2>";
+        document.getElementById("content").innerHTML = "<h2>No Data</h2>";
         return;
     }
 
     const headers = Object.keys(rows[0]);
     let html = "<table>";
 
-    // SHEET LOGIC: First sheet (Focals) gets grouped, others stay as tables
+    // MODE 1: THE "FOCALS" GROUPED DISPLAY
     if (sheetName.toLowerCase() === "focals") {
         let personCol = detectColumn(headers, ["assigned", "person", "owner", "name"]) || headers[0];
         let snCol = detectColumn(headers, ["sn", "serial", "task", "job"]) || headers[1];
@@ -198,16 +146,17 @@ function showSheet(sheetName) {
             const status = statusCol ? r[statusCol] : "";
             if (status.toLowerCase() === "complete") return;
 
-            const person = r[personCol] || "Unassigned";
+            const person = r[personCol] || "Unknown";
             if (!peopleMap[person]) peopleMap[person] = [];
-            peopleMap[person].push({ 
-                text: (r[snCol] || "") + (status ? ` (${status})` : ""), 
-                status: status 
+            
+            peopleMap[person].push({
+                text: (r[snCol] || "") + (status ? " - " + status : ""),
+                status: status
             });
         });
 
         const people = Object.keys(peopleMap);
-        let maxRows = Math.max(...people.map(p => peopleMap[p].length));
+        let maxRows = Math.max(...people.map(p => peopleMap[p].length), 0);
 
         html += "<tr>" + people.map(p => `<th>${p}</th>`).join("") + "</tr>";
         for (let i = 0; i < maxRows; i++) {
@@ -218,8 +167,9 @@ function showSheet(sheetName) {
             });
             html += "</tr>";
         }
-    } else {
-        // CONVENTIONAL TABLE DISPLAY
+    } 
+    // MODE 2: THE "AS IS" CONVENTIONAL DISPLAY
+    else {
         html += "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
         rows.forEach(row => {
             html += "<tr>" + headers.map(h => `<td>${row[h]}</td>`).join("") + "</tr>";
@@ -231,18 +181,17 @@ function showSheet(sheetName) {
 }
 
 function showImage() {
-    document.getElementById("title").innerText = "Notice Board";
+    document.getElementById("title").innerText = "Notice";
     const img = IMAGE_LIST[currentImage];
     currentImage = (currentImage + 1) % IMAGE_LIST.length;
-
     document.getElementById("content").innerHTML = `
         <div class="fullCenter">
-            <img src="${img}" style="max-width:90%; max-height:75vh; border-radius:15px; border: 5px solid #334155;">
+            <img src="${img}" style="max-width:95%; max-height:80vh; border-radius:20px;">
         </div>`;
 }
 
 function showNotification() {
-    document.getElementById("title").innerText = "Safety & Updates";
+    document.getElementById("title").innerText = "Notifications";
     document.getElementById("content").innerHTML = `
         <div class="fullCenter">
             <ul class="notification-list">
@@ -252,7 +201,29 @@ function showNotification() {
         </div>`;
 }
 
-/* 4. UTILITIES */
+/* 3. CORE ENGINE */
+function buildDisplayList() {
+    displays = [];
+    workbook.SheetNames.forEach(name => displays.push({ type: "sheet", name }));
+    displays.push({ type: "image" }, { type: "notification" });
+}
+
+function startRotation() {
+    runDisplay();
+    rotationInterval = setInterval(() => {
+        currentDisplay = (currentDisplay + 1) % displays.length;
+        runDisplay();
+    }, DISPLAY_TIME);
+}
+
+function runDisplay() {
+    const d = displays[currentDisplay];
+    if (d.type === "sheet") showSheet(d.name);
+    if (d.type === "image") showImage();
+    if (d.type === "notification") showNotification();
+}
+
+/* 4. UTILS */
 function detectColumn(headers, options) {
     for (let opt of options) {
         const found = headers.find(h => h.toLowerCase().includes(opt));
@@ -270,10 +241,9 @@ function getStatusClass(status) {
     return "";
 }
 
-// Reload data from the file every 5 minutes without refreshing the whole page
-setInterval(loadDataFromServer, AUTO_RELOAD_MS);
+// Auto-refresh data from Excel every 5 mins
+setInterval(loadExcel, AUTO_RELOAD_MS);
 
 </script>
 </body>
-
 </html>
