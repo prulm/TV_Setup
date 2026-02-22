@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TV Dashboard - Auto Load</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+            overflow: hidden; /* Prevents scrollbars on TV */
+        }
+
+        .header {
+            background: #1e293b;
+            padding: 20px;
+            font-size: 35px;
+            font-weight: bold;
+            text-align: center;
+            border-bottom: 2px solid #334155;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        #content {
+            padding: 20px;
+            height: calc(100vh - 100px);
+        }
+
+        /* TABLE STYLES */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        th {
+            background: #334155;
+            padding: 18px;
+            font-size: 24px;
+            border: 1px solid #475569;
+        }
+
+        td {
+            padding: 18px;
+            text-align: center;
+            border: 1px solid #475569;
+            font-size: 22px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* STATUS COLORS */
+        .status-open { background: #065f46; }
+        .status-hold { background: #78350f; }
+        .status-overdue { background: #7f1d1d; }
+
+        /* LAYOUTS */
+        .fullCenter {
+            height: 70vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .notification-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .notification-list h1 {
+            font-size: 45px;
+            margin: 20px 0;
+            background: #1e293b;
+            padding: 20px 40px;
+            border-radius: 15px;
+            border-left: 10px solid #38bdf8;
+        }
+    </style>
+</head>
+<body>
+
+<div id="displaySection">
+    <div class="header" id="title">Initializing Dashboard...</div>
+    <div id="content">
+        <div class="fullCenter">
+            <h1>Loading Data...</h1>
+        </div>
+    </div>
+</div>
+
+<script>
+/* --- CONFIGURATION --- */
+// IMPORTANT: Put your Excel file in the same folder as this HTML file
+const FILE_NAME = "assignments.xlsx"; 
+const DISPLAY_TIME = 12000;      // 12 seconds per screen
+const AUTO_RELOAD_MS = 300000;   // Refresh data every 5 minutes
+
+const IMAGE_LIST = [
+    "notice0.png",
+    "notice1.png"
+];
+
+/* --- GLOBALS --- */
+let workbook;
+let displays = [];
+let currentDisplay = 0;
+let currentImage = 0;
+let rotationTimer;
+
+// Start as soon as the window loads
+window.onload = loadDataFromServer;
+
+/* 1. DATA FETCHING */
+async function loadDataFromServer() {
+    try {
+        const response = await fetch(FILE_NAME, { cache: "no-store" });
+        if (!response.ok) throw new Error("Could not find " + FILE_NAME);
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+        workbook = XLSX.read(data, { type: 'array' });
+
+        buildDisplayList();
+        
+        // Start rotation if not already running
+        if (!rotationTimer) {
+            startRotation();
+        }
+    } catch (err) {
+        document.getElementById("title").innerText = "Connection Error";
+        document.getElementById("content").innerHTML = `
+            <div class="fullCenter">
+                <h2 style="color:#f87171">Error: ${err.message}</h2>
+                <p>Ensure the Excel file is named <b>${FILE_NAME}</b> and is in the same folder.</p>
+            </div>`;
+    }
+}
+
+/* 2. ROTATION LOGIC */
+function buildDisplayList() {
+    displays = [];
+    // Add all sheets from Excel
+    workbook.SheetNames.forEach(name => {
+        displays.push({ type: "sheet", name: name });
+    });
+    // Add other content
+    displays.push({ type: "image" });
+    displays.push({ type: "notification" });
+}
+
+function startRotation() {
+    runDisplay();
+    rotationTimer = setInterval(() => {
+        currentDisplay = (currentDisplay + 1) % displays.length;
+        runDisplay();
+    }, DISPLAY_TIME);
+}
+
+function runDisplay() {
+    const d = displays[currentDisplay];
+    if (d.type === "sheet") showSheet(d.name);
+    else if (d.type === "image") showImage();
+    else if (d.type === "notification") showNotification();
+}
+
+/* 3. VIEW RENDERING */
+function showSheet(sheetName) {
+    document.getElementById("title").innerText = sheetName;
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (rows.length === 0) {
+        document.getElementById("content").innerHTML = "<h2>No Data Found in Sheet</h2>";
+        return;
+    }
+
+    const headers = Object.keys(rows[0]);
+    let html = "<table>";
+
+    // SHEET LOGIC: First sheet (Focals) gets grouped, others stay as tables
+    if (sheetName.toLowerCase() === "focals") {
+        let personCol = detectColumn(headers, ["assigned", "person", "owner", "name"]) || headers[0];
+        let snCol = detectColumn(headers, ["sn", "serial", "task", "job"]) || headers[1];
+        let statusCol = detectColumn(headers, ["status", "state"]);
+
+        const peopleMap = {};
+        rows.forEach(r => {
+            const status = statusCol ? r[statusCol] : "";
+            if (status.toLowerCase() === "complete") return;
+
+            const person = r[personCol] || "Unassigned";
+            if (!peopleMap[person]) peopleMap[person] = [];
+            peopleMap[person].push({ 
+                text: (r[snCol] || "") + (status ? ` (${status})` : ""), 
+                status: status 
+            });
+        });
+
+        const people = Object.keys(peopleMap);
+        let maxRows = Math.max(...people.map(p => peopleMap[p].length));
+
+        html += "<tr>" + people.map(p => `<th>${p}</th>`).join("") + "</tr>";
+        for (let i = 0; i < maxRows; i++) {
+            html += "<tr>";
+            people.forEach(p => {
+                const item = peopleMap[p][i];
+                html += item ? `<td class="${getStatusClass(item.status)}">${item.text}</td>` : "<td></td>";
+            });
+            html += "</tr>";
+        }
+    } else {
+        // CONVENTIONAL TABLE DISPLAY
+        html += "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
+        rows.forEach(row => {
+            html += "<tr>" + headers.map(h => `<td>${row[h]}</td>`).join("") + "</tr>";
+        });
+    }
+
+    html += "</table>";
+    document.getElementById("content").innerHTML = html;
+}
+
+function showImage() {
+    document.getElementById("title").innerText = "Notice Board";
+    const img = IMAGE_LIST[currentImage];
+    currentImage = (currentImage + 1) % IMAGE_LIST.length;
+
+    document.getElementById("content").innerHTML = `
+        <div class="fullCenter">
+            <img src="${img}" style="max-width:90%; max-height:75vh; border-radius:15px; border: 5px solid #334155;">
+        </div>`;
+}
+
+function showNotification() {
+    document.getElementById("title").innerText = "Safety & Updates";
+    document.getElementById("content").innerHTML = `
+        <div class="fullCenter">
+            <ul class="notification-list">
+                <li><h1>📢 Update Status Regularly</h1></li>
+                <li><h1>📢 Sign your assigned PL</h1></li>
+            </ul>
+        </div>`;
+}
+
+/* 4. UTILITIES */
+function detectColumn(headers, options) {
+    for (let opt of options) {
+        const found = headers.find(h => h.toLowerCase().includes(opt));
+        if (found) return found;
+    }
+    return null;
+}
+
+function getStatusClass(status) {
+    if (!status) return "";
+    const s = status.toLowerCase();
+    if (s.includes("open")) return "status-open";
+    if (s.includes("hold")) return "status-hold";
+    if (s.includes("overdue")) return "status-overdue";
+    return "";
+}
+
+// Reload data from the file every 5 minutes without refreshing the whole page
+setInterval(loadDataFromServer, AUTO_RELOAD_MS);
+
+</script>
+</body>
+</html>
