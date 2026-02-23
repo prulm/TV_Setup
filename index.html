@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard - Fixed Rotation</title>
+    <title>TV Dashboard - Fullscreen Gallery</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
         body {
             margin: 0;
             font-family: Arial, sans-serif;
-            background: #0f172a;
+            background: #000; /* Black background for cleaner image borders */
             color: white;
             overflow: hidden;
         }
@@ -27,11 +27,24 @@
 
         #content {
             padding: 20px;
-            height: 78vh;
+            height: 78vh; /* Default height when header is visible */
             display: flex;
             justify-content: center;
             overflow: hidden;
             position: relative;
+            transition: all 0.3s ease;
+        }
+
+        /* Fullscreen override for IMAGE_LIST_2 */
+        body.fullscreen-mode .header {
+            display: none;
+        }
+        body.fullscreen-mode #content {
+            height: 100vh;
+            padding: 0;
+        }
+        body.fullscreen-mode #scroll-container {
+            width: 100%;
         }
 
         #scroll-container {
@@ -72,7 +85,7 @@
         .status-overdue { background: #7f1d1d; }
 
         .fullCenter {
-            height: 75vh;
+            height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -82,17 +95,33 @@
         }
 
         .msl {
-            height: 100vh;
+            height: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
             gap: 10px;
-            max-width: 100vw;
+            width: 100%;
         }
 
         .msl img {
-            max-height: 90vh;
+            max-height: 90%;
             border-radius: 10px;
+        }
+
+        /* Style for the Single Fullscreen Images */
+        .img-et-container {
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: black;
+        }
+
+        .img-et-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Keeps aspect ratio but fills as much as possible */
         }
     </style>
 </head>
@@ -115,14 +144,16 @@ const SCROLL_SPEED = 3;
 const EDGE_PAUSE_MS = 2000; 
 
 const IMAGE_LIST = ["notice0.png", "notice1.png"];
+const IMAGE_LIST_2 = ["img1.jpg", "img2.jpg", "img3.jpg"];
 
 /* --- GLOBALS --- */
 let workbook;
 let displays = [];
 let currentDisplay = 0;
+let currentEtImage = 0; 
 let rotationTimeout;
 let scrollInterval;
-let isTransitioning = false; // Prevents double-triggering slides
+let isTransitioning = false;
 
 window.onload = loadExcel;
 
@@ -132,10 +163,7 @@ async function loadExcel() {
         if (!response.ok) throw new Error("File not found");
         const data = await response.arrayBuffer();
         workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
-        
         buildDisplayList();
-        
-        // Reset and Start
         if (rotationTimeout) clearTimeout(rotationTimeout);
         if (scrollInterval) clearInterval(scrollInterval);
         startRotation();
@@ -172,11 +200,18 @@ function buildDisplayList() {
             newDisplays.push({ type: "sheet", name: name, isConventional: true, isScroller: false });
         }
     });
-    newDisplays.push({ type: "image" }, { type: "notification" });
+    newDisplays.push({ type: "image" });      
+    newDisplays.push({ type: "imageEt" });    
+    newDisplays.push({ type: "notification" });
     displays = newDisplays;
 }
 
+function resetLayout() {
+    document.body.classList.remove("fullscreen-mode");
+}
+
 function showSheet(displayObj) {
+    resetLayout();
     const sheet = workbook.Sheets[displayObj.name];
     let allRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
     document.getElementById("title").innerText = displayObj.name + (displayObj.page ? ` (${displayObj.page}/${displayObj.total})` : "");
@@ -233,36 +268,24 @@ function showSheet(displayObj) {
 function initAutoScroll(container) {
     if (scrollInterval) clearInterval(scrollInterval);
     container.scrollTop = 0;
-    
     let direction = 1; 
     let hasReachedBottom = false;
     let isPaused = true; 
-
     setTimeout(() => { isPaused = false; }, EDGE_PAUSE_MS);
 
     scrollInterval = setInterval(() => {
         if (isPaused) return;
-
         const maxScroll = container.scrollHeight - container.clientHeight;
-        
-        // If content fits on screen, pause then move to next slide
         if (maxScroll <= 10) {
             clearInterval(scrollInterval);
             setTimeout(nextSlide, EDGE_PAUSE_MS);
             return;
         }
-
         container.scrollTop += (SCROLL_SPEED * direction);
-
-        // Hit Bottom
         if (direction === 1 && container.scrollTop >= maxScroll - 1) {
-            isPaused = true;
-            direction = -1;
-            hasReachedBottom = true;
+            isPaused = true; direction = -1; hasReachedBottom = true;
             setTimeout(() => { isPaused = false; }, EDGE_PAUSE_MS);
         }
-
-        // Return to Top
         if (hasReachedBottom && direction === -1 && container.scrollTop <= 0) {
             isPaused = true;
             clearInterval(scrollInterval);
@@ -272,13 +295,29 @@ function initAutoScroll(container) {
 }
 
 function showImage() {
+    resetLayout();
     document.getElementById("title").innerText = "Maintenance Service Letters";
     document.getElementById("scroll-container").innerHTML = `
         <div class="msl"><img src="${IMAGE_LIST[0]}"><img src="${IMAGE_LIST[1]}"></div>`;
     rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
 }
 
+function showImageEt() {
+    // Activate Fullscreen
+    document.body.classList.add("fullscreen-mode");
+    
+    const img = IMAGE_LIST_2[currentEtImage];
+    document.getElementById("scroll-container").innerHTML = `
+        <div class="img-et-container">
+            <img src="${img}">
+        </div>`;
+
+    currentEtImage = (currentEtImage + 1) % IMAGE_LIST_2.length;
+    rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
+}
+
 function showNotification() {
+    resetLayout();
     document.getElementById("title").innerText = "Notifications";
     document.getElementById("scroll-container").innerHTML = `
         <div class="fullCenter"><ul style="list-style:none;padding:0;">
@@ -295,11 +334,11 @@ function startRotation() {
 
     if (d.type === "sheet") {
         showSheet(d);
-        if (!d.isScroller) {
-            rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
-        }
+        if (!d.isScroller) rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
     } else if (d.type === "image") {
         showImage();
+    } else if (d.type === "imageEt") {
+        showImageEt();
     } else if (d.type === "notification") {
         showNotification();
     }
@@ -308,10 +347,8 @@ function startRotation() {
 function nextSlide() {
     if (isTransitioning) return;
     isTransitioning = true;
-
     if (rotationTimeout) clearTimeout(rotationTimeout);
     if (scrollInterval) clearInterval(scrollInterval);
-
     currentDisplay = (currentDisplay + 1) % displays.length;
     startRotation();
 }
@@ -333,10 +370,7 @@ function getStatusClass(status) {
     return "";
 }
 
-// Global data refresh
 setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
-
-
