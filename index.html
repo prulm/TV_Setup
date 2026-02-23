@@ -24,15 +24,15 @@
         }
 
         #content {
-            padding: 30px;
-            height: 75vh;
+            padding: 20px;
+            height: 78vh;
             display: flex;
             align-items: flex-start;
             justify-content: center;
         }
 
         table {
-            width: 100%;
+            width: 98%;
             border-collapse: collapse;
             background: #1e293b;
             table-layout: fixed; 
@@ -40,17 +40,19 @@
 
         th {
             background: #334155;
-            padding: 25px;
-            font-size: 45px;
+            padding: 20px;
+            font-size: 38px;
             border: 2px solid #475569;
+            overflow: hidden;
         }
 
         td {
-            padding: 30px;
+            padding: 25px;
             text-align: center;
             border: 2px solid #475569;
-            font-size: 42px;
+            font-size: 34px; /* Slightly reduced to prevent cutting off */
             word-wrap: break-word;
+            line-height: 1.2;
         }
 
         .status-open { background: #065f46; }
@@ -77,7 +79,7 @@
         }
 
         .msl img {
-            max-height: 95vh;
+            max-height: 90vh;
             border-radius: 10px;
             border: 3px solid #334155;
         }
@@ -103,10 +105,10 @@
 <script>
 /* --- CONFIGURATION --- */
 const FILE_NAME = "assignments.xlsx"; 
-const SHEET_PAGINATED_TIME = 30000; // 30 seconds for paginated pages
-const OTHER_DISPLAY_TIME = 12000;    // 12 seconds for everything else
+const SHEET_PAGINATED_TIME = 30000; 
+const OTHER_DISPLAY_TIME = 12000;    
 const AUTO_RELOAD_MS = 120000;       
-const ROWS_PER_PAGE = 5; 
+const ROWS_PER_PAGE = 4; // Updated to 4 per page
 
 const IMAGE_LIST = [
     "notice0.png",
@@ -148,15 +150,15 @@ function buildDisplayList() {
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
         const lowerName = name.toLowerCase().trim();
 
-        // ONLY paginate "Shop Visit Status"
         if (lowerName === "shop visit status") {
             if (rows.length === 0) return;
+            // For Shop Visit Status: Non-Conventional (Pivot) + Paginated
             for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
                 displays.push({ 
                     type: "sheet", 
                     name: name, 
-                    isConventional: false, // Use "As-Is" format
-                    isPaginated: true,    // Use 30s timer
+                    isConventional: false, 
+                    isPaginated: true,    
                     start: i, 
                     end: i + ROWS_PER_PAGE,
                     page: Math.floor(i / ROWS_PER_PAGE) + 1,
@@ -164,11 +166,11 @@ function buildDisplayList() {
                 });
             }
         } else {
-            // All other sheets (e.g. Task Card) stay as single entries
+            // Task Card: Conventional + Non-Paginated
             displays.push({ 
                 type: "sheet", 
                 name: name, 
-                isConventional: true // Use Pivot/Grouped format
+                isConventional: true 
             });
         }
     });
@@ -189,48 +191,52 @@ function showSheet(displayObj) {
     const headers = Object.keys(allRows[0] || {});
     let html = "<table>";
 
-    // MODE: CONVENTIONAL (Shop Visit Status)
+    // MODE: CONVENTIONAL (Task Card / Others)
     if (displayObj.isConventional) {
-        const pagedRows = allRows.slice(displayObj.start, displayObj.end);
         html += "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
-        pagedRows.forEach(row => {
+        allRows.forEach(row => {
             html += "<tr>" + headers.map(h => `<td>${row[h]}</td>`).join("") + "</tr>";
         });
-        
-        // Fill empty rows to maintain layout
-        for(let i = pagedRows.length; i < ROWS_PER_PAGE; i++) {
-            html += "<tr>" + headers.map(() => `<td>&nbsp;</td>`).join("") + "</tr>";
-        }
     } 
-    // MODE: GROUPED/PIVOT (Task Card / Others)
+    // MODE: NON-CONVENTIONAL/PIVOT (Shop Visit Status - PAGINATED)
     else {
-        let personCol = detectColumn(headers, ["assigned", "person", "owner", "Shop Engineer"]) || headers[0];
-        let snCol = detectColumn(headers, ["sn", "serial", "ESN", "job"]) || headers[1];
+        let personCol = detectColumn(headers, ["model", "type", "engine"]) || headers[0]; // Columns are Model types
+        let snCol = detectColumn(headers, ["sn", "serial", "esn"]) || headers[1];
         let statusCol = detectColumn(headers, ["status", "state"]);
+        let engineerCol = detectColumn(headers, ["assigned", "person", "shop engineer", "engineer"]);
 
         const peopleMap = {};
-        allRows.forEach(r => {
+        // Use allRows to build the map, but we will only display the sliced rows per page
+        const pagedRows = allRows.slice(displayObj.start, displayObj.end);
+        
+        pagedRows.forEach(r => {
             const status = statusCol ? String(r[statusCol]) : "";
-            if (status.toLowerCase() === "complete") return;
-            const person = r[personCol] || "Unknown";
+            const person = r[personCol] || "Other";
+            const engineer = r[engineerCol] || "";
+            
             if (!peopleMap[person]) peopleMap[person] = [];
             peopleMap[person].push({
-                text: (r[snCol] || "") + (status ? " - " + status : ""),
+                text: `${r[snCol] || ""}<br><small>${status}</small><br><span style="font-size:0.7em; opacity:0.8;">${engineer}</span>`,
                 status: status
             });
         });
 
-        const people = Object.keys(peopleMap);
-        html += "<tr>" + people.map(p => `<th>${p}</th>`).join("") + "</tr>";
-        let maxRows = Math.max(...people.map(p => peopleMap[p].length), 0);
+        const columns = Object.keys(peopleMap);
+        html += "<tr>" + columns.map(p => `<th>${p}</th>`).join("") + "</tr>";
+        let maxRowsInThisPage = Math.max(...columns.map(p => peopleMap[p].length), 0);
         
-        for (let i = 0; i < maxRows; i++) {
+        for (let i = 0; i < maxRowsInThisPage; i++) {
             html += "<tr>";
-            people.forEach(p => {
+            columns.forEach(p => {
                 const item = peopleMap[p][i];
                 html += item ? `<td class="${getStatusClass(item.status)}">${item.text}</td>` : "<td></td>";
             });
             html += "</tr>";
+        }
+
+        // Fill empty rows to prevent table jumping
+        for(let i = maxRowsInThisPage; i < ROWS_PER_PAGE; i++) {
+            html += "<tr>" + columns.map(() => `<td>&nbsp;</td>`).join("") + "</tr>";
         }
     }
     
@@ -262,9 +268,7 @@ function showNotification() {
 /* 3. ROTATION ENGINE */
 function startRotation() {
     runDisplay();
-    
     const currentObj = displays[currentDisplay];
-    // Use 30s only for the paginated pages of Shop Visit Status
     const waitTime = (currentObj.isPaginated) ? SHEET_PAGINATED_TIME : OTHER_DISPLAY_TIME;
 
     rotationTimeout = setTimeout(() => {
@@ -302,6 +306,3 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
-
-
-
