@@ -149,7 +149,7 @@ function buildDisplayList() {
         const lowerName = name.toLowerCase().trim();
 
         // ONLY paginate "Shop Visit Status"
-        if (lowerName === "shop visit status") {
+        if (lowerName === "task card") {
             if (rows.length === 0) return;
             for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
                 displays.push({ 
@@ -302,3 +302,4 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
