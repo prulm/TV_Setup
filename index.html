@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard</title>
+    <title>TV Dashboard - Auto-Scroll</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -21,18 +21,29 @@
             text-align: center;
             font-weight: bold;
             border-bottom: 4px solid #334155;
+            position: relative;
+            z-index: 10;
         }
 
         #content {
             padding: 20px;
             height: 78vh;
             display: flex;
-            align-items: flex-start;
             justify-content: center;
+            overflow: hidden; /* Necessary for auto-scroll */
+            position: relative;
+        }
+
+        /* Container for the table to allow scrolling */
+        #scroll-container {
+            width: 98%;
+            height: 100%;
+            overflow-y: hidden; 
+            position: relative;
         }
 
         table {
-            width: 98%;
+            width: 100%;
             border-collapse: collapse;
             background: #1e293b;
             table-layout: fixed; 
@@ -43,7 +54,9 @@
             padding: 20px;
             font-size: 45px;
             border: 2px solid #475569;
-            overflow: hidden;
+            position: sticky;
+            top: 0;
+            z-index: 5;
         }
 
         td {
@@ -83,23 +96,15 @@
             border-radius: 10px;
             border: 3px solid #334155;
         }
-
-        .notification-list {
-            list-style-type: none;
-            padding: 0;
-        }
-
-        .notification-list li h1 {
-            margin: 40px 0;
-            font-size: 60px;
-        }
     </style>
 </head>
 <body>
 
 <div id="displaySection">
     <div class="header" id="title">Loading Dashboard...</div>
-    <div id="content"></div>
+    <div id="content">
+        <div id="scroll-container"></div>
+    </div>
 </div>
 
 <script>
@@ -108,19 +113,17 @@ const FILE_NAME = "assignments.xlsx";
 const SHEET_PAGINATED_TIME = 30000; 
 const OTHER_DISPLAY_TIME = 12000;    
 const AUTO_RELOAD_MS = 120000;       
-const ROWS_PER_PAGE = 4; // Updated to 4 per page
+const COLS_PER_PAGE = 5; 
+const SCROLL_SPEED = 1; // Pixels per frame
 
-const IMAGE_LIST = [
-    "notice0.png",
-    "notice1.png"
-];
+const IMAGE_LIST = ["notice0.png", "notice1.png"];
 
 /* --- GLOBALS --- */
 let workbook;
 let displays = [];
 let currentDisplay = 0;
-let currentImage = 0;
 let rotationTimeout;
+let scrollInterval;
 
 window.onload = loadExcel;
 
@@ -130,9 +133,7 @@ async function loadExcel() {
         if (!response.ok) throw new Error("File not found");
         const data = await response.arrayBuffer();
         workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
-
         buildDisplayList();
-        
         if (rotationTimeout) clearTimeout(rotationTimeout);
         startRotation();
     } catch (err) {
@@ -141,150 +142,136 @@ async function loadExcel() {
     }
 }
 
-/* 1. SELECTIVE PAGINATION ENGINE */
 function buildDisplayList() {
     displays = [];
-    
     workbook.SheetNames.forEach(name => {
         const sheet = workbook.Sheets[name];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
         const lowerName = name.toLowerCase().trim();
 
         if (lowerName === "shop visit status") {
-            if (rows.length === 0) return;
-            // For Shop Visit Status: Non-Conventional (Pivot) + Paginated
-            for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
+            const headers = Object.keys(rows[0] || {});
+            const modelCol = detectColumn(headers, ["model", "type", "engine"]) || headers[0];
+            const uniqueModels = [...new Set(rows.map(r => r[modelCol]))].filter(m => m);
+            
+            // Paginate by COLUMNS (5 models per page)
+            for (let i = 0; i < uniqueModels.length; i += COLS_PER_PAGE) {
                 displays.push({ 
                     type: "sheet", 
                     name: name, 
                     isConventional: false, 
-                    isPaginated: true,    
-                    start: i, 
-                    end: i + ROWS_PER_PAGE,
-                    page: Math.floor(i / ROWS_PER_PAGE) + 1,
-                    total: Math.ceil(rows.length / ROWS_PER_PAGE)
+                    isPaginated: true,
+                    models: uniqueModels.slice(i, i + COLS_PER_PAGE),
+                    page: Math.floor(i / COLS_PER_PAGE) + 1,
+                    total: Math.ceil(uniqueModels.length / COLS_PER_PAGE)
                 });
             }
         } else {
-            // Task Card: Conventional + Non-Paginated
-            displays.push({ 
-                type: "sheet", 
-                name: name, 
-                isConventional: true 
-            });
+            displays.push({ type: "sheet", name: name, isConventional: true });
         }
     });
-
     displays.push({ type: "image" }, { type: "notification" });
 }
 
-/* 2. RENDERING */
 function showSheet(displayObj) {
-    const sheetName = displayObj.name;
-    const sheet = workbook.Sheets[sheetName];
+    const sheet = workbook.Sheets[displayObj.name];
     let allRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-    let titleText = sheetName;
-    if (displayObj.page) titleText += ` (${displayObj.page}/${displayObj.total})`;
-    document.getElementById("title").innerText = titleText;
+    document.getElementById("title").innerText = displayObj.name + (displayObj.page ? ` (${displayObj.page}/${displayObj.total})` : "");
 
     const headers = Object.keys(allRows[0] || {});
     let html = "<table>";
 
-    // MODE: CONVENTIONAL (Task Card / Others)
     if (displayObj.isConventional) {
         html += "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
         allRows.forEach(row => {
             html += "<tr>" + headers.map(h => `<td>${row[h]}</td>`).join("") + "</tr>";
         });
-    } 
-    // MODE: NON-CONVENTIONAL/PIVOT (Shop Visit Status - PAGINATED)
-    else {
-        let personCol = detectColumn(headers, ["model", "type", "engine"]) || headers[0]; // Columns are Model types
-        let snCol = detectColumn(headers, ["sn", "serial", "esn"]) || headers[1];
-        let statusCol = detectColumn(headers, ["status", "state"]);
-        let engineerCol = detectColumn(headers, ["assigned", "person", "shop engineer", "engineer"]);
+    } else {
+        const modelCol = detectColumn(headers, ["model", "type", "engine"]) || headers[0];
+        const snCol = detectColumn(headers, ["sn", "serial", "esn"]) || headers[1];
+        const statusCol = detectColumn(headers, ["status", "state"]);
+        const engineerCol = detectColumn(headers, ["assigned", "person", "shop engineer", "engineer"]);
 
         const peopleMap = {};
-        // Use allRows to build the map, but we will only display the sliced rows per page
-        const pagedRows = allRows.slice(displayObj.start, displayObj.end);
-        
-        pagedRows.forEach(r => {
-            const status = statusCol ? String(r[statusCol]) : "";
-            const person = r[personCol] || "Other";
-            const engineer = r[engineerCol] || "";
-            
-            if (!peopleMap[person]) peopleMap[person] = [];
-            peopleMap[person].push({
-                text: `${r[snCol] || ""}<br>${engineer}<br><span style="font-size:0.7em; opacity:0.8;">${status}</span>`,
-                status: status
-            });
+        displayObj.models.forEach(m => peopleMap[m] = []);
+
+        allRows.forEach(r => {
+            const model = r[modelCol];
+            if (displayObj.models.includes(model)) {
+                const status = statusCol ? String(r[statusCol]) : "";
+                if (status.toLowerCase() === "complete") return;
+                peopleMap[model].push({
+                    text: `${r[snCol] || ""}<br>${r[engineerCol] || ""}<br><span style="font-size:0.7em; opacity:0.8;">${status}</span>`,
+                    status: status
+                });
+            }
         });
 
-        const columns = Object.keys(peopleMap);
-        html += "<tr>" + columns.map(p => `<th>${p}</th>`).join("") + "</tr>";
-        let maxRowsInThisPage = Math.max(...columns.map(p => peopleMap[p].length), 0);
-        
-        for (let i = 0; i < maxRowsInThisPage; i++) {
+        html += "<tr>" + displayObj.models.map(m => `<th>${m}</th>`).join("") + "</tr>";
+        const maxRows = Math.max(...displayObj.models.map(m => peopleMap[m].length), 0);
+        for (let i = 0; i < maxRows; i++) {
             html += "<tr>";
-            columns.forEach(p => {
-                const item = peopleMap[p][i];
+            displayObj.models.forEach(m => {
+                const item = peopleMap[m][i];
                 html += item ? `<td class="${getStatusClass(item.status)}">${item.text}</td>` : "<td></td>";
             });
             html += "</tr>";
         }
-
-        // Fill empty rows to prevent table jumping
-        for(let i = maxRowsInThisPage; i < ROWS_PER_PAGE; i++) {
-            html += "<tr>" + columns.map(() => `<td>&nbsp;</td>`).join("") + "</tr>";
-        }
     }
-    
     html += "</table>";
-    document.getElementById("content").innerHTML = html;
+    const container = document.getElementById("scroll-container");
+    container.innerHTML = html;
+    
+    // Trigger Auto-Scroll
+    initAutoScroll(container);
+}
+
+function initAutoScroll(container) {
+    if (scrollInterval) clearInterval(scrollInterval);
+    container.scrollTop = 0;
+    
+    let direction = 1; // 1 for down, -1 for up
+    scrollInterval = setInterval(() => {
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        if (maxScroll <= 0) return;
+
+        container.scrollTop += (SCROLL_SPEED * direction);
+
+        if (container.scrollTop >= maxScroll - 1) direction = -1;
+        if (container.scrollTop <= 0) direction = 1;
+    }, 30);
 }
 
 function showImage() {
+    if (scrollInterval) clearInterval(scrollInterval);
     document.getElementById("title").innerText = "Maintenance Service Letters";
-    const img = IMAGE_LIST[currentImage];
-    const img2 = IMAGE_LIST[(currentImage + 1) % IMAGE_LIST.length];
-    currentImage = (currentImage + 2) % IMAGE_LIST.length;
-
-    document.getElementById("content").innerHTML = `
-        <div class="msl"><img src="${img}"><img src="${img2}"></div>`;
+    document.getElementById("scroll-container").innerHTML = `
+        <div class="msl"><img src="${IMAGE_LIST[0]}"><img src="${IMAGE_LIST[1]}"></div>`;
 }
 
 function showNotification() {
+    if (scrollInterval) clearInterval(scrollInterval);
     document.getElementById("title").innerText = "Notifications";
-    document.getElementById("content").innerHTML = `
-        <div class="fullCenter">
-            <ul class="notification-list">
-                <li><h1>📢 Update Status Regularly</h1></li>
-                <li><h1>📢 Crew meeting at 4 PM</h1></li>
-            </ul>
-        </div>`;
+    document.getElementById("scroll-container").innerHTML = `
+        <div class="fullCenter"><ul style="list-style:none;padding:0;">
+            <li><h1>📢 Update Status Regularly</h1></li>
+            <li><h1>📢 Crew meeting at 4 PM</h1></li>
+        </ul></div>`;
 }
 
-/* 3. ROTATION ENGINE */
 function startRotation() {
-    runDisplay();
-    const currentObj = displays[currentDisplay];
-    const waitTime = (currentObj.isPaginated) ? SHEET_PAGINATED_TIME : OTHER_DISPLAY_TIME;
-
+    const d = displays[currentDisplay];
+    if (d.type === "sheet") showSheet(d);
+    else if (d.type === "image") showImage();
+    else if (d.type === "notification") showNotification();
+    
+    const waitTime = (d.isPaginated) ? SHEET_PAGINATED_TIME : OTHER_DISPLAY_TIME;
     rotationTimeout = setTimeout(() => {
         currentDisplay = (currentDisplay + 1) % displays.length;
         startRotation();
     }, waitTime);
 }
 
-function runDisplay() {
-    const d = displays[currentDisplay];
-    if (d.type === "sheet") showSheet(d);
-    else if (d.type === "image") showImage();
-    else if (d.type === "notification") showNotification();
-}
-
-/* 4. UTILS */
 function detectColumn(headers, options) {
     for (let opt of options) {
         const found = headers.find(h => h.toLowerCase().includes(opt));
@@ -306,5 +293,3 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
-
-
