@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard - Dynamic Scroll Rotation</title>
+    <title>TV Dashboard - Pause on Scroll</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -109,10 +109,11 @@
 <script>
 /* --- CONFIGURATION --- */
 const FILE_NAME = "assignments.xlsx"; 
-const OTHER_DISPLAY_TIME = 12000; // 12s for non-scrolling slides
+const OTHER_DISPLAY_TIME = 12000; 
 const AUTO_RELOAD_MS = 120000;    
 const COLS_PER_PAGE = 5; 
-const SCROLL_SPEED = 1.5; // Speed of scroll (pixels per tick)
+const SCROLL_SPEED = 1.5; 
+const EDGE_PAUSE_MS = 2000; // 2 second pause
 
 const IMAGE_LIST = ["notice0.png", "notice1.png"];
 
@@ -122,7 +123,6 @@ let displays = [];
 let currentDisplay = 0;
 let rotationTimeout;
 let scrollInterval;
-let isScrollComplete = false;
 
 window.onload = loadExcel;
 
@@ -158,7 +158,7 @@ function buildDisplayList() {
                     type: "sheet", 
                     name: name, 
                     isConventional: false, 
-                    isScroller: true, // Flag for dynamic timing
+                    isScroller: true, 
                     models: uniqueModels.slice(i, i + COLS_PER_PAGE),
                     page: Math.floor(i / COLS_PER_PAGE) + 1,
                     total: Math.ceil(uniqueModels.length / COLS_PER_PAGE)
@@ -228,32 +228,40 @@ function showSheet(displayObj) {
 function initAutoScroll(container) {
     if (scrollInterval) clearInterval(scrollInterval);
     container.scrollTop = 0;
-    isScrollComplete = false;
     
     let direction = 1; 
     let hasReachedBottom = false;
+    let isPaused = true; // Start with a pause at the top
+
+    // Logic to handle the pause
+    setTimeout(() => { isPaused = false; }, EDGE_PAUSE_MS);
 
     scrollInterval = setInterval(() => {
+        if (isPaused) return;
+
         const maxScroll = container.scrollHeight - container.clientHeight;
-        
-        // If content is too short to scroll, just mark as complete immediately
         if (maxScroll <= 5) {
-            isScrollComplete = true;
+            // No need to scroll, just wait for standard rotation or trigger complete
+            setTimeout(() => { nextSlide(); }, EDGE_PAUSE_MS); 
+            clearInterval(scrollInterval);
             return;
         }
 
         container.scrollTop += (SCROLL_SPEED * direction);
 
-        if (container.scrollTop >= maxScroll - 1) {
+        // Check Bottom
+        if (direction === 1 && container.scrollTop >= maxScroll - 1) {
+            isPaused = true;
             direction = -1;
             hasReachedBottom = true;
+            setTimeout(() => { isPaused = false; }, EDGE_PAUSE_MS);
         }
 
-        // Once it goes Bottom -> Top, we trigger the next slide
-        if (hasReachedBottom && container.scrollTop <= 0) {
+        // Check Top (after returning)
+        if (hasReachedBottom && direction === -1 && container.scrollTop <= 0) {
+            isPaused = true;
             clearInterval(scrollInterval);
-            isScrollComplete = true;
-            nextSlide(); 
+            setTimeout(() => { nextSlide(); }, EDGE_PAUSE_MS);
         }
     }, 30);
 }
@@ -263,7 +271,7 @@ function showImage() {
     document.getElementById("title").innerText = "Maintenance Service Letters";
     document.getElementById("scroll-container").innerHTML = `
         <div class="msl"><img src="${IMAGE_LIST[0]}"><img src="${IMAGE_LIST[1]}"></div>`;
-    setTimeout(nextSlide, OTHER_DISPLAY_TIME);
+    rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
 }
 
 function showNotification() {
@@ -274,18 +282,16 @@ function showNotification() {
             <li><h1>📢 Update Status Regularly</h1></li>
             <li><h1>📢 Crew meeting at 4 PM</h1></li>
         </ul></div>`;
-    setTimeout(nextSlide, OTHER_DISPLAY_TIME);
+    rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
 }
 
 function startRotation() {
     const d = displays[currentDisplay];
     if (d.type === "sheet") {
         showSheet(d);
-        // If it's a non-scrolling sheet (Task Card), use standard timer
         if (!d.isScroller) {
             rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
         }
-        // If isScroller is true, showSheet() calls initAutoScroll which handles the transition
     } else if (d.type === "image") {
         showImage();
     } else if (d.type === "notification") {
