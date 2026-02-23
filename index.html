@@ -41,7 +41,7 @@
         th {
             background: #334155;
             padding: 25px;
-            font-size: 36px;
+            font-size: 45px;
             border: 2px solid #475569;
         }
 
@@ -49,7 +49,7 @@
             padding: 30px;
             text-align: center;
             border: 2px solid #475569;
-            font-size: 32px;
+            font-size: 42px;
             word-wrap: break-word;
         }
 
@@ -155,7 +155,7 @@ function buildDisplayList() {
                 displays.push({ 
                     type: "sheet", 
                     name: name, 
-                    isConventional: true, // Use "As-Is" format
+                    isConventional: false, // Use "As-Is" format
                     isPaginated: true,    // Use 30s timer
                     start: i, 
                     end: i + ROWS_PER_PAGE,
@@ -168,7 +168,7 @@ function buildDisplayList() {
             displays.push({ 
                 type: "sheet", 
                 name: name, 
-                isConventional: false // Use Pivot/Grouped format
+                isConventional: true // Use Pivot/Grouped format
             });
         }
     });
@@ -302,5 +302,6 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
 
