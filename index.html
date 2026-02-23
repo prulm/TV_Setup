@@ -50,7 +50,7 @@
             padding: 25px;
             text-align: center;
             border: 2px solid #475569;
-            font-size: 45px; /* Slightly reduced to prevent cutting off */
+            font-size: 45px;
             word-wrap: break-word;
             line-height: 1.2;
         }
@@ -216,7 +216,7 @@ function showSheet(displayObj) {
             
             if (!peopleMap[person]) peopleMap[person] = [];
             peopleMap[person].push({
-                text: `${r[snCol] || ""}<br><small>${status}</small><br><span style="font-size:0.7em; opacity:0.8;">${engineer}</span>`,
+                text: `${r[snCol] || ""}<br>${engineer}<br><span style="font-size:0.7em; opacity:0.8;">${status}</span>`,
                 status: status
             });
         });
@@ -306,4 +306,5 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
+
 
