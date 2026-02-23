@@ -78,6 +78,7 @@
             justify-content: center;
             align-items: center;
             text-align: center;
+            font-size: 45px;
         }
 
         .msl {
@@ -86,7 +87,7 @@
             justify-content: center;
             align-items: center;
             gap: 10px;
-            width: 100vw;
+            max-width: 100vw;
         }
 
         .msl img {
@@ -110,7 +111,7 @@ const FILE_NAME = "assignments.xlsx";
 const OTHER_DISPLAY_TIME = 12000; 
 const AUTO_RELOAD_MS = 120000;    
 const COLS_PER_PAGE = 5; 
-const SCROLL_SPEED = 2; 
+const SCROLL_SPEED = 1.5; 
 const EDGE_PAUSE_MS = 2000; 
 
 const IMAGE_LIST = ["notice0.png", "notice1.png"];
@@ -337,4 +338,3 @@ setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
-
