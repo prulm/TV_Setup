@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard</title>
+    <title>TV Dashboard - Custom Timings</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -16,36 +16,40 @@
 
         .header {
             background: #1e293b;
-            padding: 20px;
-            font-size: 45px;
+            padding: 25px;
+            font-size: 42px;
             text-align: center;
             font-weight: bold;
-            border-bottom: 3px solid #334155;
+            border-bottom: 4px solid #334155;
         }
 
         #content {
-            padding: 20px;
+            padding: 30px;
+            height: 75vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
             background: #1e293b;
-            table-layout: fixed;
+            table-layout: fixed; 
         }
 
         th {
             background: #334155;
-            padding: 20px;
-            font-size: 55px;
+            padding: 25px;
+            font-size: 36px;
             border: 2px solid #475569;
         }
 
         td {
-            padding: 20px;
+            padding: 30px;
             text-align: center;
             border: 2px solid #475569;
-            font-size: 45px;
+            font-size: 32px;
             word-wrap: break-word;
         }
 
@@ -54,7 +58,7 @@
         .status-overdue { background: #7f1d1d; }
 
         .fullCenter {
-            height: 80vh;
+            height: 75vh;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -68,6 +72,14 @@
             justify-content: center;
             align-items: center;
             background: #000;
+            gap: 10px;
+            width: 100vw;
+        }
+
+        .msl img {
+            max-height: 100vh;
+            border-radius: 10px;
+            border: 3px solid #334155;
         }
 
         .notification-list {
@@ -76,14 +88,8 @@
         }
 
         .notification-list li h1 {
-            margin: 30px 0;
-            font-size: 55px;
-        }
-        
-        .page-indicator {
-            font-size: 18px;
-            color: #94a3b8;
-            margin-top: 10px;
+            margin: 40px 0;
+            font-size: 60px;
         }
     </style>
 </head>
@@ -97,9 +103,10 @@
 <script>
 /* --- CONFIGURATION --- */
 const FILE_NAME = "assignments.xlsx"; 
-const DISPLAY_TIME = 12000;
-const AUTO_RELOAD_MS = 120000;
-const ROWS_PER_PAGE = 10; // Adjust this based on your TV screen size
+const SHEET_DISPLAY_TIME = 30000; // 30 seconds for tables
+const OTHER_DISPLAY_TIME = 12000; // 12 seconds for images/notices
+const AUTO_RELOAD_MS = 120000;    // Reload file every 2 mins
+const ROWS_PER_PAGE = 5; 
 
 const IMAGE_LIST = [
     "notice0.png",
@@ -111,7 +118,7 @@ let workbook;
 let displays = [];
 let currentDisplay = 0;
 let currentImage = 0;
-let rotationInterval;
+let rotationTimeout;
 
 window.onload = loadExcel;
 
@@ -123,10 +130,13 @@ async function loadExcel() {
         workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
 
         buildDisplayList();
-        if (!rotationInterval) startRotation();
+        
+        // Start or Reset rotation
+        if (rotationTimeout) clearTimeout(rotationTimeout);
+        startRotation();
     } catch (err) {
         document.getElementById("title").innerText = "Update Error";
-        document.getElementById("content").innerHTML = `<div class="fullCenter"><h1>⚠️ Missing: ${FILE_NAME}</h1></div>`;
+        document.getElementById("content").innerHTML = `<div class="fullCenter"><h1>⚠️ Check File: ${FILE_NAME}</h1></div>`;
     }
 }
 
@@ -138,10 +148,10 @@ function buildDisplayList() {
         const sheet = workbook.Sheets[name];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
         
-        if (rows.length <= ROWS_PER_PAGE) {
-            displays.push({ type: "sheet", name: name, start: 0, end: rows.length });
+        if (name.toLowerCase().includes("shop visit status")) {
+            displays.push({ type: "sheet", name: name, isPivot: true });
         } else {
-            // Split into multiple pages
+            if (rows.length === 0) return;
             for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
                 displays.push({ 
                     type: "sheet", 
@@ -164,31 +174,23 @@ function showSheet(displayObj) {
     const sheet = workbook.Sheets[sheetName];
     let allRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
-    // Header updates with Page Number if paginated
     let titleText = sheetName;
     if (displayObj.page) titleText += ` (${displayObj.page}/${displayObj.total})`;
     document.getElementById("title").innerText = titleText;
 
-    if (allRows.length === 0) {
-        document.getElementById("content").innerHTML = "<h2>No Data</h2>";
-        return;
-    }
-
-    const headers = Object.keys(allRows[0]);
-    const pagedRows = allRows.slice(displayObj.start, displayObj.end);
+    const headers = Object.keys(allRows[0] || {});
     let html = "<table>";
 
-    // MODE 1: SHOP VISIT STATUS (Pivot/Grouped View)
-    if (sheetName.toLowerCase() === "shop") {
+    if (displayObj.isPivot) {
         let personCol = detectColumn(headers, ["assigned", "person", "owner", "name"]) || headers[0];
         let snCol = detectColumn(headers, ["sn", "serial", "task", "job"]) || headers[1];
         let statusCol = detectColumn(headers, ["status", "state"]);
 
         const peopleMap = {};
-        allRows.forEach(r => { // Note: using allRows to keep columns consistent across pages
-            const status = statusCol ? r[statusCol] : "";
+        allRows.forEach(r => {
+            const status = statusCol ? String(r[statusCol]) : "";
             if (status.toLowerCase() === "complete") return;
-            const person = r[personCol] || "Unknown";
+            const person = r[personCol] || "Unassigned";
             if (!peopleMap[person]) peopleMap[person] = [];
             peopleMap[person].push({
                 text: (r[snCol] || "") + (status ? " - " + status : ""),
@@ -197,8 +199,6 @@ function showSheet(displayObj) {
         });
 
         const people = Object.keys(peopleMap);
-        // Note: Pivot view pagination is tricky, usually best displayed as a whole
-        // For now, we render the pivot view without slicing, as it's column-based
         html += "<tr>" + people.map(p => `<th>${p}</th>`).join("") + "</tr>";
         let maxRows = Math.max(...people.map(p => peopleMap[p].length), 0);
         
@@ -210,15 +210,17 @@ function showSheet(displayObj) {
             });
             html += "</tr>";
         }
-    } 
-    // MODE 2: CONVENTIONAL DISPLAY (With Pagination)
-    else {
+    } else {
+        const pagedRows = allRows.slice(displayObj.start, displayObj.end);
         html += "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
         pagedRows.forEach(row => {
             html += "<tr>" + headers.map(h => `<td>${row[h]}</td>`).join("") + "</tr>";
         });
+        
+        for(let i = pagedRows.length; i < ROWS_PER_PAGE; i++) {
+            html += "<tr>" + headers.map(() => `<td>&nbsp;</td>`).join("") + "</tr>";
+        }
     }
-
     html += "</table>";
     document.getElementById("content").innerHTML = html;
 }
@@ -227,14 +229,12 @@ function showImage() {
     document.getElementById("title").innerText = "Maintenance Service Letters";
     const img = IMAGE_LIST[currentImage];
     const img2 = IMAGE_LIST[(currentImage + 1) % IMAGE_LIST.length];
-    
-    // Toggle images by 2
     currentImage = (currentImage + 2) % IMAGE_LIST.length;
 
     document.getElementById("content").innerHTML = `
         <div class="msl">
-            <img src="${img}" style="max-height:85vh; border-radius:10px; border: 2px solid #334155;">
-            <img src="${img2}" style="max-height:85vh; border-radius:10px; border: 2px solid #334155;">
+            <img src="${img}">
+            <img src="${img2}">
         </div>`;
 }
 
@@ -249,13 +249,18 @@ function showNotification() {
         </div>`;
 }
 
-/* 3. CORE ENGINE */
+/* 3. CORE ENGINE (Variable Duration) */
 function startRotation() {
     runDisplay();
-    rotationInterval = setInterval(() => {
+    
+    const currentObj = displays[currentDisplay];
+    // If it's a sheet, wait 30s. Otherwise, wait 12s.
+    const waitTime = (currentObj.type === "sheet") ? SHEET_DISPLAY_TIME : OTHER_DISPLAY_TIME;
+
+    rotationTimeout = setTimeout(() => {
         currentDisplay = (currentDisplay + 1) % displays.length;
-        runDisplay();
-    }, DISPLAY_TIME);
+        startRotation(); // Recursive call for next item
+    }, waitTime);
 }
 
 function runDisplay() {
@@ -276,18 +281,15 @@ function detectColumn(headers, options) {
 
 function getStatusClass(status) {
     if (!status) return "";
-    const s = status.toLowerCase();
-    if (s.includes("open")) return "status-open";
-    if (s.includes("hold")) return "status-hold";
-    if (s.includes("overdue")) return "status-overdue";
+    const s = String(status).toLowerCase();
+    if (s.includes("open") || s.includes("inspection")) return "status-open";
+    if (s.includes("hold") || s.includes("assembly")) return "status-hold";
+    if (s.includes("overdue") || s.includes("test")) return "status-overdue";
     return "";
 }
+
 
 setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
-
-
-
-
