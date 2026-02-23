@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard - Pause on Scroll</title>
+    <title>TV Dashboard - Fixed Rotation</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -111,7 +111,7 @@ const OTHER_DISPLAY_TIME = 12000;
 const AUTO_RELOAD_MS = 120000;    
 const COLS_PER_PAGE = 5; 
 const SCROLL_SPEED = 1.5; 
-const EDGE_PAUSE_MS = 2000; // 2 second pause
+const EDGE_PAUSE_MS = 2000; 
 
 const IMAGE_LIST = ["notice0.png", "notice1.png"];
 
@@ -121,6 +121,7 @@ let displays = [];
 let currentDisplay = 0;
 let rotationTimeout;
 let scrollInterval;
+let isTransitioning = false; // Prevents double-triggering slides
 
 window.onload = loadExcel;
 
@@ -130,8 +131,12 @@ async function loadExcel() {
         if (!response.ok) throw new Error("File not found");
         const data = await response.arrayBuffer();
         workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
+        
         buildDisplayList();
+        
+        // Reset and Start
         if (rotationTimeout) clearTimeout(rotationTimeout);
+        if (scrollInterval) clearInterval(scrollInterval);
         startRotation();
     } catch (err) {
         document.getElementById("title").innerText = "Update Error";
@@ -140,7 +145,7 @@ async function loadExcel() {
 }
 
 function buildDisplayList() {
-    displays = [];
+    const newDisplays = [];
     workbook.SheetNames.forEach(name => {
         const sheet = workbook.Sheets[name];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -152,7 +157,7 @@ function buildDisplayList() {
             const uniqueModels = [...new Set(rows.map(r => r[modelCol]))].filter(m => m);
             
             for (let i = 0; i < uniqueModels.length; i += COLS_PER_PAGE) {
-                displays.push({ 
+                newDisplays.push({ 
                     type: "sheet", 
                     name: name, 
                     isConventional: false, 
@@ -163,10 +168,11 @@ function buildDisplayList() {
                 });
             }
         } else {
-            displays.push({ type: "sheet", name: name, isConventional: true, isScroller: false });
+            newDisplays.push({ type: "sheet", name: name, isConventional: true, isScroller: false });
         }
     });
-    displays.push({ type: "image" }, { type: "notification" });
+    newDisplays.push({ type: "image" }, { type: "notification" });
+    displays = newDisplays;
 }
 
 function showSheet(displayObj) {
@@ -229,25 +235,25 @@ function initAutoScroll(container) {
     
     let direction = 1; 
     let hasReachedBottom = false;
-    let isPaused = true; // Start with a pause at the top
+    let isPaused = true; 
 
-    // Logic to handle the pause
     setTimeout(() => { isPaused = false; }, EDGE_PAUSE_MS);
 
     scrollInterval = setInterval(() => {
         if (isPaused) return;
 
         const maxScroll = container.scrollHeight - container.clientHeight;
-        if (maxScroll <= 5) {
-            // No need to scroll, just wait for standard rotation or trigger complete
-            setTimeout(() => { nextSlide(); }, EDGE_PAUSE_MS); 
+        
+        // If content fits on screen, pause then move to next slide
+        if (maxScroll <= 10) {
             clearInterval(scrollInterval);
+            setTimeout(nextSlide, EDGE_PAUSE_MS);
             return;
         }
 
         container.scrollTop += (SCROLL_SPEED * direction);
 
-        // Check Bottom
+        // Hit Bottom
         if (direction === 1 && container.scrollTop >= maxScroll - 1) {
             isPaused = true;
             direction = -1;
@@ -255,17 +261,16 @@ function initAutoScroll(container) {
             setTimeout(() => { isPaused = false; }, EDGE_PAUSE_MS);
         }
 
-        // Check Top (after returning)
+        // Return to Top
         if (hasReachedBottom && direction === -1 && container.scrollTop <= 0) {
             isPaused = true;
             clearInterval(scrollInterval);
-            setTimeout(() => { nextSlide(); }, EDGE_PAUSE_MS);
+            setTimeout(nextSlide, EDGE_PAUSE_MS);
         }
     }, 30);
 }
 
 function showImage() {
-    if (scrollInterval) clearInterval(scrollInterval);
     document.getElementById("title").innerText = "Maintenance Service Letters";
     document.getElementById("scroll-container").innerHTML = `
         <div class="msl"><img src="${IMAGE_LIST[0]}"><img src="${IMAGE_LIST[1]}"></div>`;
@@ -273,7 +278,6 @@ function showImage() {
 }
 
 function showNotification() {
-    if (scrollInterval) clearInterval(scrollInterval);
     document.getElementById("title").innerText = "Notifications";
     document.getElementById("scroll-container").innerHTML = `
         <div class="fullCenter"><ul style="list-style:none;padding:0;">
@@ -284,7 +288,10 @@ function showNotification() {
 }
 
 function startRotation() {
+    isTransitioning = false;
     const d = displays[currentDisplay];
+    if (!d) return;
+
     if (d.type === "sheet") {
         showSheet(d);
         if (!d.isScroller) {
@@ -298,7 +305,12 @@ function startRotation() {
 }
 
 function nextSlide() {
+    if (isTransitioning) return;
+    isTransitioning = true;
+
     if (rotationTimeout) clearTimeout(rotationTimeout);
+    if (scrollInterval) clearInterval(scrollInterval);
+
     currentDisplay = (currentDisplay + 1) % displays.length;
     startRotation();
 }
@@ -320,8 +332,8 @@ function getStatusClass(status) {
     return "";
 }
 
+// Global data refresh
 setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
-
