@@ -50,7 +50,7 @@
 
         table {
             width: 100%;
-            height: 100%; /* Force table to fill space */
+            height: 100%;
             border-collapse: collapse;
             background: #1e293b;
             table-layout: fixed; 
@@ -83,7 +83,6 @@
         .gate-4 { background: #dc2626; } /* Red */
         .status-default { background: #b45309; color: white; }
 
-        /* Animation for Fullscreen */
         @keyframes kenburns {
             0% { transform: scale(1); }
             100% { transform: scale(1.5); }
@@ -106,7 +105,7 @@
         }
     </style>
 </head>
-<body class="">
+<body>
 
 <div id="displaySection">
     <div class="header" id="header-container">
@@ -122,7 +121,6 @@
 const FILE_NAME = "assignments.xlsx"; 
 const OTHER_DISPLAY_TIME = 12000; 
 const ET_IMAGE_TIME = 30000; 
-const AUTO_RELOAD_MS = 180000;    
 const COLS_PER_PAGE = 5; 
 const SCROLL_SPEED = 2.5; 
 const EDGE_PAUSE_MS = 2000; 
@@ -144,13 +142,18 @@ window.onload = loadExcel;
 async function loadExcel() {
     try {
         const response = await fetch(`${FILE_NAME}?t=${new Date().getTime()}`);
+        if (!response.ok) throw new Error("File not found");
         const data = await response.arrayBuffer();
         workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
         buildDisplayList();
-        if (rotationTimeout) clearTimeout(rotationTimeout);
+        
+        // After loading/re-loading, start from the beginning
+        currentDisplay = 0; 
         startRotation();
     } catch (err) {
-        document.getElementById("title").innerText = "File Error";
+        document.getElementById("title").innerText = "File Error / Searching File...";
+        // If file fails, try again in 10 seconds
+        setTimeout(loadExcel, 10000);
     }
 }
 
@@ -183,7 +186,7 @@ function buildDisplayList() {
         }
     });
     newDisplays.push({ type: "image" });      
-    newDisplays.push({ type: "imageEt" }); // Single entry point for the rotation image
+    newDisplays.push({ type: "imageEt" }); 
     newDisplays.push({ type: "notification" });
     displays = newDisplays;
 }
@@ -191,23 +194,12 @@ function buildDisplayList() {
 function getStatusClass(status) {
     if (!status) return "status-default";
     const s = String(status).toLowerCase();
-    
-    // Gate 0
     if (s.includes("gate 0")) return "gate-0";
-    
-    // Gate 1 (including aliases)
     if (s.includes("gate 1") || s.includes("disassembly") || s.includes("cleaning") || s.includes("inspection")) return "gate-1";
-    
-    // Gate 2
     if (s.includes("gate 2")) return "gate-2";
-    
-    // Gate 3
     if (s.includes("gate 3")) return "gate-3";
-    
-    // Gate 4
     if (s.includes("gate 4")) return "gate-4";
-
-    return "status-default"; // Defaults to yellow
+    return "status-default";
 }
 
 function showSheet(displayObj) {
@@ -215,7 +207,6 @@ function showSheet(displayObj) {
     const sheet = workbook.Sheets[displayObj.name];
     let allRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
     
-    // Set Header with Pagination
     let pageSuffix = displayObj.totalPages > 1 ? ` (${displayObj.currentPage}/${displayObj.totalPages})` : "";
     document.getElementById("title").innerText = displayObj.name + pageSuffix;
 
@@ -296,11 +287,8 @@ function initAutoScroll(container) {
 function showImageEt() {
     document.body.classList.add("fullscreen-mode");
     const imgPath = IMAGE_LIST_2[currentEtImageIndex];
-    
-    document.getElementById("scroll-container").innerHTML = `
-        <div class="img-et-container"><img src="${imgPath}"></div>`;
+    document.getElementById("scroll-container").innerHTML = `<div class="img-et-container"><img src="${imgPath}"></div>`;
 
-    // Increment index so NEXT full cycle shows the next image
     currentEtImageIndex = (currentEtImageIndex + 1) % IMAGE_LIST_2.length;
     rotationTimeout = setTimeout(nextSlide, ET_IMAGE_TIME);
 }
@@ -351,8 +339,17 @@ function nextSlide() {
     isTransitioning = true;
     if (rotationTimeout) clearTimeout(rotationTimeout);
     if (scrollInterval) clearInterval(scrollInterval);
-    currentDisplay = (currentDisplay + 1) % displays.length;
-    startRotation();
+
+    let nextIndex = currentDisplay + 1;
+    
+    // Check if we have finished all slides
+    if (nextIndex >= displays.length) {
+        // RESET: Load Excel fresh before starting the next loop
+        loadExcel();
+    } else {
+        currentDisplay = nextIndex;
+        startRotation();
+    }
 }
 
 function detectColumn(headers, options) {
@@ -362,8 +359,6 @@ function detectColumn(headers, options) {
     }
     return null;
 }
-
-setInterval(loadExcel, AUTO_RELOAD_MS);
 </script>
 </body>
 </html>
