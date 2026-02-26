@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard - Pro Layout</title>
+    <title>TV Dashboard - Pro Layout with Video Schedule</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -12,6 +12,24 @@
             background: #0f172a;
             color: white;
             overflow: hidden;
+        }
+
+        /* Video Container Styles */
+        #video-overlay {
+            display: none; /* Hidden by default */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            z-index: 9999;
+        }
+
+        #video-overlay iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
         }
 
         .header {
@@ -75,12 +93,11 @@
             line-height: 1.3;
         }
 
-        /* Status Colors */
-        .gate-0 { background: #059669; } /* Green */
-        .gate-1 { background: #10b981; } /* Light Green */
-        .gate-2 { background: #f59e0b; } /* Orange/Amber */
-        .gate-3 { background: #ea580c; } /* Deep Orange */
-        .gate-4 { background: #dc2626; } /* Red */
+        .gate-0 { background: #059669; }
+        .gate-1 { background: #10b981; }
+        .gate-2 { background: #f59e0b; }
+        .gate-3 { background: #ea580c; }
+        .gate-4 { background: #dc2626; }
         .status-default { background: #b45309; color: white; }
 
         @keyframes kenburns {
@@ -107,6 +124,10 @@
 </head>
 <body>
 
+<div id="video-overlay">
+    <iframe id="video-frame" src=""></iframe>
+</div>
+
 <div id="displaySection">
     <div class="header" id="header-container">
         <span id="title">Loading Dashboard...</span>
@@ -124,6 +145,7 @@ const ET_IMAGE_TIME = 30000;
 const COLS_PER_PAGE = 5; 
 const SCROLL_SPEED = 2.5; 
 const EDGE_PAUSE_MS = 2000; 
+const VIDEO_URL = "https://ihavenotv.com/the-giants-of-the-sky-the-amazing-world-of-aviation";
 
 const IMAGE_LIST = ["notice0.png", "notice1.png"];
 const IMAGE_LIST_2 = ["img1.jpg", "img2.jpg", "img3.jpg"];
@@ -136,26 +158,66 @@ let currentEtImageIndex = 0;
 let rotationTimeout;
 let scrollInterval;
 let isTransitioning = false;
+let isVideoActive = false;
 
-window.onload = loadExcel;
+window.onload = () => {
+    loadExcel();
+    // Start checking the clock every minute
+    setInterval(checkVideoSchedule, 60000);
+    checkVideoSchedule();
+};
+
+function checkVideoSchedule() {
+    const now = new Date();
+    const hour = now.getHours();
+    const min = now.getMinutes();
+    const timeVal = hour + (min / 60);
+
+    // Schedule ranges:
+    // 09:30 - 10:00 (9.5 to 10.0)
+    // 12:30 - 13:30 (12.5 to 13.5)
+    // 15:30 - 22:00 (15.5 to 22.0)
+    const morningVideo = (timeVal >= 8.6 && timeVal < 10);
+    const lunchVideo = (timeVal >= 12.5 && timeVal < 13.5);
+    const afternoonVideo = (timeVal >= 15.5 && timeVal < 22);
+
+    const shouldShowVideo = morningVideo || lunchVideo || afternoonVideo;
+
+    const overlay = document.getElementById('video-overlay');
+    const frame = document.getElementById('video-frame');
+
+    if (shouldShowVideo && !isVideoActive) {
+        isVideoActive = true;
+        overlay.style.display = 'block';
+        frame.src = VIDEO_URL;
+        // Stop the dashboard rotation to save memory
+        if (rotationTimeout) clearTimeout(rotationTimeout);
+        if (scrollInterval) clearInterval(scrollInterval);
+    } else if (!shouldShowVideo && isVideoActive) {
+        isVideoActive = false;
+        overlay.style.display = 'none';
+        frame.src = ""; // Stop the video
+        loadExcel(); // Resume dashboard
+    }
+}
 
 async function loadExcel() {
+    if (isVideoActive) return;
     try {
         const response = await fetch(`${FILE_NAME}?t=${new Date().getTime()}`);
         if (!response.ok) throw new Error("File not found");
         const data = await response.arrayBuffer();
         workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
         buildDisplayList();
-        
-        // After loading/re-loading, start from the beginning
         currentDisplay = 0; 
         startRotation();
     } catch (err) {
         document.getElementById("title").innerText = "File Error / Searching File...";
-        // If file fails, try again in 10 seconds
         setTimeout(loadExcel, 10000);
     }
 }
+
+// ... (Rest of your original functions: buildDisplayList, getStatusClass, showSheet, initAutoScroll, showImageEt, showImage, showNotification, startRotation, nextSlide, detectColumn) ...
 
 function buildDisplayList() {
     const newDisplays = [];
@@ -206,13 +268,10 @@ function showSheet(displayObj) {
     document.body.classList.remove("fullscreen-mode");
     const sheet = workbook.Sheets[displayObj.name];
     let allRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-    
     let pageSuffix = displayObj.totalPages > 1 ? ` (${displayObj.currentPage}/${displayObj.totalPages})` : "";
     document.getElementById("title").innerText = displayObj.name + pageSuffix;
-
     const headers = Object.keys(allRows[0] || {});
     let html = "<table>";
-
     if (displayObj.isConventional) {
         html += "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
         allRows.forEach(row => {
@@ -223,10 +282,8 @@ function showSheet(displayObj) {
         const snCol = detectColumn(headers, ["sn", "serial", "esn"]) || headers[1];
         const statusCol = detectColumn(headers, ["status", "state"]);
         const engineerCol = detectColumn(headers, ["assigned", "person", "engineer"]);
-
         const peopleMap = {};
         displayObj.models.forEach(m => peopleMap[m] = []);
-
         allRows.forEach(r => {
             const model = r[modelCol];
             if (displayObj.models.includes(model)) {
@@ -238,7 +295,6 @@ function showSheet(displayObj) {
                 });
             }
         });
-
         html += "<tr>" + displayObj.models.map(m => `<th>${m}</th>`).join("") + "</tr>";
         const maxRows = Math.max(...displayObj.models.map(m => peopleMap[m].length), 0);
         for (let i = 0; i < maxRows; i++) {
@@ -254,7 +310,6 @@ function showSheet(displayObj) {
     html += "</table>";
     const container = document.getElementById("scroll-container");
     container.innerHTML = html;
-    
     if (displayObj.isScroller) initAutoScroll(container);
 }
 
@@ -263,7 +318,6 @@ function initAutoScroll(container) {
     container.scrollTop = 0;
     let direction = 1; let hasReachedBottom = false; let isPaused = true; 
     setTimeout(() => { isPaused = false; }, EDGE_PAUSE_MS);
-
     scrollInterval = setInterval(() => {
         if (isPaused) return;
         const maxScroll = container.scrollHeight - container.clientHeight;
@@ -288,7 +342,6 @@ function showImageEt() {
     document.body.classList.add("fullscreen-mode");
     const imgPath = IMAGE_LIST_2[currentEtImageIndex];
     document.getElementById("scroll-container").innerHTML = `<div class="img-et-container"><img src="${imgPath}"></div>`;
-
     currentEtImageIndex = (currentEtImageIndex + 1) % IMAGE_LIST_2.length;
     rotationTimeout = setTimeout(nextSlide, ET_IMAGE_TIME);
 }
@@ -318,10 +371,10 @@ function showNotification() {
 }
 
 function startRotation() {
+    if (isVideoActive) return;
     isTransitioning = false;
     const d = displays[currentDisplay];
     if (!d) return;
-
     if (d.type === "sheet") {
         showSheet(d);
         if (!d.isScroller) rotationTimeout = setTimeout(nextSlide, OTHER_DISPLAY_TIME);
@@ -335,16 +388,12 @@ function startRotation() {
 }
 
 function nextSlide() {
-    if (isTransitioning) return;
+    if (isTransitioning || isVideoActive) return;
     isTransitioning = true;
     if (rotationTimeout) clearTimeout(rotationTimeout);
     if (scrollInterval) clearInterval(scrollInterval);
-
     let nextIndex = currentDisplay + 1;
-    
-    // Check if we have finished all slides
     if (nextIndex >= displays.length) {
-        // RESET: Load Excel fresh before starting the next loop
         loadExcel();
     } else {
         currentDisplay = nextIndex;
@@ -362,5 +411,3 @@ function detectColumn(headers, options) {
 </script>
 </body>
 </html>
-
-
