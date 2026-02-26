@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Dashboard</title>
+    <title>TV Dashboard - Pro Layout with Video Schedule</title>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -12,24 +12,6 @@
             background: #0f172a;
             color: white;
             overflow: hidden;
-        }
-
-        /* Video Container Styles */
-        #video-overlay {
-            display: none; /* Hidden by default */
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: black;
-            z-index: 9999;
-        }
-
-        #video-overlay iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
         }
 
         .header {
@@ -93,11 +75,12 @@
             line-height: 1.3;
         }
 
-        .gate-0 { background: #059669; }
-        .gate-1 { background: #10b981; }
-        .gate-2 { background: #f59e0b; }
-        .gate-3 { background: #ea580c; }
-        .gate-4 { background: #dc2626; }
+        /* Status Colors */
+        .gate-0 { background: #059669; } /* Green */
+        .gate-1 { background: #10b981; } /* Light Green */
+        .gate-2 { background: #f59e0b; } /* Orange/Amber */
+        .gate-3 { background: #ea580c; } /* Deep Orange */
+        .gate-4 { background: #dc2626; } /* Red */
         .status-default { background: #b45309; color: white; }
 
         @keyframes kenburns {
@@ -120,13 +103,23 @@
             object-fit: contain;
             animation: kenburns 30s linear forwards;
         }
+
+        #video-msg {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            font-size: 60px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
 
-<div id="video-overlay">
-    <iframe id="video-frame" src=""></iframe>
-</div>
+<div id="video-msg">📺 Video Mode Active<br><span style="font-size: 30px;">(Check popup window)</span></div>
 
 <div id="displaySection">
     <div class="header" id="header-container">
@@ -159,12 +152,12 @@ let rotationTimeout;
 let scrollInterval;
 let isTransitioning = false;
 let isVideoActive = false;
+let videoWindow = null;
 
 window.onload = () => {
     loadExcel();
-    // Start checking the clock every minute
-    setInterval(checkVideoSchedule, 60000);
-    checkVideoSchedule();
+    // Check for video time every 30 seconds
+    setInterval(checkVideoSchedule, 30000);
 };
 
 function checkVideoSchedule() {
@@ -173,30 +166,28 @@ function checkVideoSchedule() {
     const min = now.getMinutes();
     const timeVal = hour + (min / 60);
 
-    // Schedule ranges:
-    // 09:30 - 10:00 (9.5 to 10.0)
-    // 12:30 - 13:30 (12.5 to 13.5)
-    // 15:30 - 22:00 (15.5 to 22.0)
-    const morningVideo = (timeVal >= 8.6 && timeVal < 10);
+    // Ranges: 9:30-10, 12:30-1:30, 3:30-10:00 (15.5 to 22.0)
+    const morningVideo = (timeVal >= 9.5 && timeVal < 10);
     const lunchVideo = (timeVal >= 12.5 && timeVal < 13.5);
     const afternoonVideo = (timeVal >= 15.5 && timeVal < 22);
 
     const shouldShowVideo = morningVideo || lunchVideo || afternoonVideo;
 
-    const overlay = document.getElementById('video-overlay');
-    const frame = document.getElementById('video-frame');
-
     if (shouldShowVideo && !isVideoActive) {
         isVideoActive = true;
-        overlay.style.display = 'block';
-        frame.src = VIDEO_URL;
-        // Stop the dashboard rotation to save memory
+        document.getElementById('video-msg').style.display = 'flex';
+        // Open video in a new full-size window
+        videoWindow = window.open(VIDEO_URL, 'videoTab');
+        
         if (rotationTimeout) clearTimeout(rotationTimeout);
         if (scrollInterval) clearInterval(scrollInterval);
     } else if (!shouldShowVideo && isVideoActive) {
         isVideoActive = false;
-        overlay.style.display = 'none';
-        frame.src = ""; // Stop the video
+        document.getElementById('video-msg').style.display = 'none';
+        if (videoWindow) {
+            videoWindow.close();
+            videoWindow = null;
+        }
         loadExcel(); // Resume dashboard
     }
 }
@@ -217,8 +208,6 @@ async function loadExcel() {
     }
 }
 
-// ... (Rest of your original functions: buildDisplayList, getStatusClass, showSheet, initAutoScroll, showImageEt, showImage, showNotification, startRotation, nextSlide, detectColumn) ...
-
 function buildDisplayList() {
     const newDisplays = [];
     workbook.SheetNames.forEach(name => {
@@ -234,13 +223,9 @@ function buildDisplayList() {
             
             for (let i = 0; i < uniqueModels.length; i += COLS_PER_PAGE) {
                 newDisplays.push({ 
-                    type: "sheet", 
-                    name: name, 
-                    isConventional: false, 
-                    isScroller: true, 
+                    type: "sheet", name: name, isConventional: false, isScroller: true, 
                     models: uniqueModels.slice(i, i + COLS_PER_PAGE),
-                    currentPage: Math.floor(i / COLS_PER_PAGE) + 1,
-                    totalPages: totalPages
+                    currentPage: Math.floor(i / COLS_PER_PAGE) + 1, totalPages: totalPages
                 });
             }
         } else {
@@ -272,6 +257,7 @@ function showSheet(displayObj) {
     document.getElementById("title").innerText = displayObj.name + pageSuffix;
     const headers = Object.keys(allRows[0] || {});
     let html = "<table>";
+
     if (displayObj.isConventional) {
         html += "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
         allRows.forEach(row => {
@@ -411,4 +397,3 @@ function detectColumn(headers, options) {
 </script>
 </body>
 </html>
-
